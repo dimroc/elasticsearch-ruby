@@ -224,7 +224,14 @@ module Elasticsearch
             __raise_transport_error response
           end
 
-          json     = serializer.load(response.body) if response.headers && response.headers["content-type"] =~ /json/
+          begin
+            json     = __parse_response(response)
+          rescue MultiJson::ParseError
+            # Failure to parse indicates an incomplete json response. Retry.
+            response2   = block.call(connection, url)
+            json     = __parse_response(response2)
+          end
+
           took     = (json['took'] ? sprintf('%.3fs', json['took']/1000.0) : 'n/a') rescue 'n/a' if logger || tracer
 
           __log   method, path, params, body, url, response, json, took, duration if logger
@@ -251,6 +258,10 @@ module Elasticsearch
         # @api    private
         def __build_connections
           raise NoMethodError, "Implement this method in your class"
+        end
+
+        def __parse_response(response)
+          serializer.load(response.body) if response.headers && response.headers["content-type"] =~ /json/
         end
       end
     end
